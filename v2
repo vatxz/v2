@@ -132,12 +132,15 @@ def get_loot():
 
 @event_guard
 def go_to_flag(path, wait):
-    flag = pg.locateOnScreen(path, confidence=0.8, region=constants.REGION_MAP)
-    if flag:
-        x, y = pg.center(flag)
-        pg.moveTo(x, y)
-        pg.click()
-        time.sleep(wait)
+    try:
+        flag = pg.locateOnScreen(path, confidence=0.8, region=constants.REGION_MAP)
+        if flag:
+            x, y = pg.center(flag)
+            pg.moveTo(x, y)
+            pg.click()
+            time.sleep(wait)
+    except pg.ImageNotFoundException:
+        print(f"No se encontró la imagen {path}")
 
 @event_guard
 def check_player_position():
