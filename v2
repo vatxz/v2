@@ -1,0 +1,195 @@
+import pyautogui as pg
+import actions
+import constants
+import json
+import threading
+import time
+import cv2
+import numpy as np
+import easyocr
+import tkinter as tk
+from tkinter import ttk
+from pynput.keyboard import Listener, keyboard
+import my_thread
+from my_thread import ThreadGroup
+
+# Global event to control threads
+global event_th
+event_th = threading.Event()
+
+# Initialize EasyOCR reader
+reader = easyocr.Reader(['en'])
+
+# Variables for life and mana
+vida = 500
+mana = 150
+running = False
+
+# Function to enhance the image and read the numbers
+def read_number(x, y, w, h):
+    screenshot = np.array(pg.screenshot(region=(x, y, w, h)))
+    gray = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
+    scale_percent = 300  # percentage of scaling
+    width = int(gray.shape[1] * scale_percent / 100)
+    height = int(gray.shape[0] * scale_percent / 100)
+    dim = (width, height)
+    resized = cv2.resize(gray, dim, interpolation=cv2.INTER_AREA)
+    alpha = 3.0  # Contrast
+    beta = -200  # Brightness
+    adjusted = cv2.convertScaleAbs(resized, alpha=alpha, beta=beta)
+    _, binary = cv2.threshold(adjusted, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    result = reader.readtext(binary, detail=0)
+    numbers = ''.join([res for res in result if res.isdigit()])
+    numbers = numbers.replace('0', '8') if '0' in numbers and len(numbers) == 1 else numbers
+    return numbers if numbers else None
+
+# Coordinates of the region where the life number is located
+life_x, life_y, life_w, life_h = 1857, 377, 33, 18
+# Coordinates of the region where the mana number is located
+mana_x, mana_y, mana_w, mana_h = 1855, 392, 38, 23
+
+def start_program():
+    global running
+    running = True
+    run_program()
+
+def pause_program():
+    global running
+    running = False
+
+def update_values():
+    global vida, mana
+    vida = int(vida_entry.get())
+    mana = int(mana_entry.get())
+    vida_label.config(text=f"Vida: {vida}")
+    mana_label.config(text=f"Mana: {mana}")
+
+def run_program():
+    global running
+    if not running:
+        return
+    life_number = read_number(life_x, life_y, life_w, life_h)
+    mana_number = read_number(mana_x, mana_y, mana_w, mana_h)
+    print(f"Vida: {life_number} - Mana: {mana_number}")
+    if life_number is not None and int(life_number) < vida:
+        pg.press('f1')
+        print("Presionando F1")
+    if mana_number is not None and int(mana_number) < mana:
+        pg.press('f2')
+        print("Presionando F2")
+    root.after(500, run_program)
+
+# Create the main window
+root = tk.Tk()
+root.title("Control de Programa")
+root.geometry("300x200")
+
+# Control buttons
+start_button = ttk.Button(root, text="Start", command=start_program)
+start_button.pack()
+pause_button = ttk.Button(root, text="Pause", command=pause_program)
+pause_button.pack()
+
+# Inputs to edit life and mana values
+vida_label = ttk.Label(root, text="Vida:")
+vida_label.pack()
+vida_entry = ttk.Entry(root)
+vida_entry.insert(0, str(vida))
+vida_entry.pack()
+mana_label = ttk.Label(root, text="Mana:")
+mana_label.pack()
+mana_entry = ttk.Entry(root)
+mana_entry.insert(0, str(mana))
+mana_entry.pack()
+update_button = ttk.Button(root, text="Update Values", command=update_values)
+update_button.pack()
+
+def event_guard(func):
+    def wrapper(*args, **kwargs):
+        if event_th.is_set():
+            return
+        return func(*args, **kwargs)
+    return wrapper
+
+@event_guard
+def kill_monster():
+    while actions.check_battle() is None:
+        print("Matando monstruos")
+        pg.press("space")
+        while pg.locateOnScreen("imgs/redtarget.png", confidence=0.6, region=constants.REGION_BATTLE) is not None:
+            print("Esperando monstruo morir")
+            time.sleep(0.1)
+        print("Buscando monstruo")
+        time.sleep(0.1)
+
+@event_guard
+def get_loot():
+    loot = pg.locateAllOnScreen("imgs/wasp.png", confidence=0.7, region=constants.RADIO_LOOT)
+    for box in loot:
+        x, y = pg.center(box)
+        pg.moveTo(x, y)
+        pg.click(button="right")
+
+@event_guard
+def go_to_flag(path, wait):
+    flag = pg.locateOnScreen(path, confidence=0.8, region=constants.REGION_MAP)
+    if flag:
+        x, y = pg.center(flag)
+        pg.moveTo(x, y)
+        pg.click()
+        time.sleep(wait)
+
+@event_guard
+def check_player_position():
+    return pg.locateOnScreen("imgs/player.png", confidence=0.6, region=constants.REGION_MAP)
+
+def run():
+    with open(f"{constants.FOLDER_NAME}/infos.json", "r") as file:
+        data = json.loads(file.read())
+    while not event_th.is_set():
+        for item in data:
+            if not actions.check_anchor():
+                return
+            kill_monster()
+            time.sleep(0.5)
+            get_loot()
+            time.sleep(0.5)
+            go_to_flag(item["path"], item["wait"])
+            time.sleep(0.5)
+            if check_player_position():
+                kill_monster()
+                time.sleep(0.5)
+                get_loot()
+                time.sleep(0.5)
+                go_to_flag(item["path"], item["wait"])
+            actions.eat_food()
+            actions.hole_down(item["down_hole"])
+            actions.hole_up(item["up_hole"], f"{constants.FOLDER_NAME}/Anchfloor3.png", 130, 130)
+            actions.hole_up(item["up_hole"], f"{constants.FOLDER_NAME}/Anchfloor2.png", 430, 130)
+            time.sleep(0.5)
+
+def key_code(key, th_group):
+    if key == keyboard.Key.esc:
+        event_th.set()
+        th_group.stop()
+        return False
+    if key == keyboard.Key.delete:
+        event_th.clear()
+        th_group.start()
+        if not th_run.is_alive():
+            th_run.start()
+
+# Initializing threads
+th_run = threading.Thread(target=run)
+th_full_mana = my_thread.MyThread(lambda: actions.check_status("mana", 5, *constants.POSITION_MANA_FULL, constants.COLOR_MANA, "F6"))
+th_check_life = my_thread.MyThread(lambda: actions.check_status("vida", 2, *constants.POSITION_LIFE, constants.COLOR_GREEN_LIFE, "F3"))
+
+# Grouping threads
+group_thread = my_thread.ThreadGroup([th_full_mana, th_check_life])
+
+# Starting the listener
+with Listener(on_press=lambda key: key_code(key, group_thread)) as listener:
+    listener.join()
+
+# Running the GUI
+root.mainloop()
