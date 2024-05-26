@@ -9,7 +9,7 @@ import numpy as np
 import easyocr
 import tkinter as tk
 from tkinter import ttk
-from pynput.keyboard import Listener, keyboard
+from pynput.keyboard import Listener, Key
 import my_thread
 from my_thread import ThreadGroup
 
@@ -169,11 +169,11 @@ def run():
             time.sleep(0.5)
 
 def key_code(key, th_group):
-    if key == keyboard.Key.esc:
+    if key == Key.esc:
         event_th.set()
         th_group.stop()
         return False
-    if key == keyboard.Key.delete:
+    if key == Key.delete:
         event_th.clear()
         th_group.start()
         if not th_run.is_alive():
