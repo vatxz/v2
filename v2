@@ -113,22 +113,28 @@ def event_guard(func):
 
 @event_guard
 def kill_monster():
-    while actions.check_battle() is None:
-        print("Matando monstruos")
-        pg.press("space")
-        while pg.locateOnScreen("imgs/redtarget.png", confidence=0.6, region=constants.REGION_BATTLE) is not None:
-            print("Esperando monstruo morir")
+    try:
+        while actions.check_battle() is None:
+            print("Matando monstruos")
+            pg.press("space")
+            while pg.locateOnScreen("imgs/redtarget.png", confidence=0.6, region=constants.REGION_BATTLE) is not None:
+                print("Esperando monstruo morir")
+                time.sleep(0.1)
+            print("Buscando monstruo")
             time.sleep(0.1)
-        print("Buscando monstruo")
-        time.sleep(0.1)
+    except pg.ImageNotFoundException:
+        print("No se encontró la imagen del objetivo rojo")
 
 @event_guard
 def get_loot():
-    loot = pg.locateAllOnScreen("imgs/wasp.png", confidence=0.7, region=constants.RADIO_LOOT)
-    for box in loot:
-        x, y = pg.center(box)
-        pg.moveTo(x, y)
-        pg.click(button="right")
+    try:
+        loot = pg.locateAllOnScreen("imgs/wasp.png", confidence=0.7, region=constants.RADIO_LOOT)
+        for box in loot:
+            x, y = pg.center(box)
+            pg.moveTo(x, y)
+            pg.click(button="right")
+    except pg.ImageNotFoundException:
+        print("No se encontró la imagen del botín")
 
 @event_guard
 def go_to_flag(path, wait):
@@ -144,32 +150,39 @@ def go_to_flag(path, wait):
 
 @event_guard
 def check_player_position():
-    return pg.locateOnScreen("imgs/player.png", confidence=0.6, region=constants.REGION_MAP)
+    try:
+        return pg.locateOnScreen("imgs/player.png", confidence=0.6, region=constants.REGION_MAP)
+    except pg.ImageNotFoundException:
+        print("No se encontró la imagen del jugador")
+        return None
 
 def run():
-    with open(f"{constants.FOLDER_NAME}/infos.json", "r") as file:
-        data = json.loads(file.read())
-    while not event_th.is_set():
-        for item in data:
-            if not actions.check_anchor():
-                return
-            kill_monster()
-            time.sleep(0.5)
-            get_loot()
-            time.sleep(0.5)
-            go_to_flag(item["path"], item["wait"])
-            time.sleep(0.5)
-            if check_player_position():
+    try:
+        with open(f"{constants.FOLDER_NAME}/infos.json", "r") as file:
+            data = json.loads(file.read())
+        while not event_th.is_set():
+            for item in data:
+                if not actions.check_anchor():
+                    return
                 kill_monster()
                 time.sleep(0.5)
                 get_loot()
                 time.sleep(0.5)
                 go_to_flag(item["path"], item["wait"])
-            actions.eat_food()
-            actions.hole_down(item["down_hole"])
-            actions.hole_up(item["up_hole"], f"{constants.FOLDER_NAME}/Anchfloor3.png", 130, 130)
-            actions.hole_up(item["up_hole"], f"{constants.FOLDER_NAME}/Anchfloor2.png", 430, 130)
-            time.sleep(0.5)
+                time.sleep(0.5)
+                if check_player_position():
+                    kill_monster()
+                    time.sleep(0.5)
+                    get_loot()
+                    time.sleep(0.5)
+                    go_to_flag(item["path"], item["wait"])
+                actions.eat_food()
+                actions.hole_down(item["down_hole"])
+                actions.hole_up(item["up_hole"], f"{constants.FOLDER_NAME}/Anchfloor3.png", 130, 130)
+                actions.hole_up(item["up_hole"], f"{constants.FOLDER_NAME}/Anchfloor2.png", 430, 130)
+                time.sleep(0.5)
+    except pg.ImageNotFoundException as e:
+        print(f"Error al buscar imagen: {e}")
 
 def key_code(key, th_group):
     if key == Key.esc:
@@ -196,3 +209,4 @@ with Listener(on_press=lambda key: key_code(key, group_thread)) as listener:
 
 # Running the GUI
 root.mainloop()
+
